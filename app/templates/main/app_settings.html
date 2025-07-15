@@ -1,0 +1,51 @@
+{% extends 'layout/base.html' %}
+{% block title %}App Settings{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 class="display-4 text-center mb-4">Application Settings</h1>
+
+    <div class="card">
+        <div class="card-header fs-4">
+            <i class="bi bi-palette-fill"></i> Color Theme
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Select a theme preference. "Auto" mode will switch between Light and Dark themes based on the time of day (Dark from 8 PM to 6 AM).</p>
+            <div class="d-grid gap-2 d-md-flex">
+                <button class="btn btn-lg btn-outline-secondary" data-theme-choice="auto">
+                    <i class="bi bi-clock-history"></i> Auto
+                </button>
+                <button class="btn btn-lg btn-outline-light" data-theme-choice="light">
+                    <i class="bi bi-sun-fill"></i> Light
+                </button>
+                <button class="btn btn-lg btn-outline-primary" data-theme-choice="dark">
+                    <i class="bi bi-moon-stars-fill"></i> Dark
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // This script block is on the settings page itself to handle button clicks.
+    // The main theme logic is in base.html to run on every page.
+    const themeButtons = document.querySelectorAll('[data-theme-choice]');
+    
+    themeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const choice = button.dataset.themeChoice;
+            // Store the user's manual choice in the browser's local storage
+            localStorage.setItem('themeChoice', choice);
+            
+            // Immediately apply the theme change by calling the global function
+            // (which is defined in base.html)
+            window.applyTheme();
+            
+            // Optional: Add visual feedback to show which button is active
+            console.log(`Theme set to: ${choice}`);
+        });
+    });
+</script>
+{% endblock %}

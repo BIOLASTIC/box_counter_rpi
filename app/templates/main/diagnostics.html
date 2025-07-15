@@ -1,0 +1,77 @@
+{% extends 'layout/base.html' %}
+{% block title %}Pin Diagnostics{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="display-4 text-center mb-4">Hardware Diagnostics</h1>
+    <div class="row g-4">
+        <!-- ===== NEW: GPIO Diagram Column ===== -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>GPIO Connection Diagram</h4>
+                </div>
+                <div class="card-body text-center">
+                    <p class="text-muted">This diagram shows how modules are connected to the Raspberry Pi.</p>
+                    <img src="{{ url_for('static', filename='images/gpio_diagram.png') }}" class="img-fluid rounded" alt="GPIO Connection Diagram">
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Pin Status Column -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Live Pin Status</h4>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-dark table-bordered align-middle text-center mb-0">
+                        <thead>
+                            <tr>
+                                <th>Component</th>
+                                <th>GPIO Pin</th>
+                                <th>Live State</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for component, details in pin_config.items() %}
+                            <tr>
+                                <td>{{ component.replace('_', ' ') }}</td>
+                                <td>{{ details.pin }}</td>
+                                <td id="{{ component }}_STATE" class="fs-5">--</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function updatePinStatus() {
+        fetch('/api/pin_status')
+            .then(res => res.json())
+            .then(data => {
+                for (const component in data) {
+                    const value = data[component];
+                    const stateEl = document.getElementById(component + '_STATE');
+                    if (stateEl) {
+                        const isHigh = (value === 1);
+                        const stateText = isHigh ? 'HIGH' : 'LOW';
+                        const badgeClass = isHigh ? 'bg-success' : 'bg-danger';
+                        stateEl.innerHTML = `<span class="badge ${badgeClass}">${stateText}</span>`;
+                    }
+                }
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        updatePinStatus();
+        setInterval(updatePinStatus, 500);
+    });
+</script>
+{% endblock %}

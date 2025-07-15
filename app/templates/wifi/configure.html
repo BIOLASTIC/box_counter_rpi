@@ -1,0 +1,87 @@
+{% extends 'layout/base.html' %}
+{% block title %}WiFi Configuration{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 class="display-4 text-center mb-4">WiFi Configuration</h1>
+    <div class="card">
+        <div class="card-body">
+            <div class="d-grid mb-4">
+                <button id="scan-btn" class="btn btn-primary btn-lg"><i class="bi bi-broadcast"></i> Scan for Networks</button>
+            </div>
+            <div id="networks-list" class="list-group mb-4" style="display:none;"></div>
+
+            <form id="connect-form" style="display:none;">
+                <h3 class="mb-3">Connect to <span id="selected-ssid" class="text-info"></span></h3>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" class="form-control form-control-lg virtual-keyboard-input" placeholder="Enter password (or leave blank for open networks)">
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-success btn-lg">Connect</button>
+                </div>
+            </form>
+            <div id="message" class="mt-3"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('scan-btn').addEventListener('click', () => {
+        const btn = document.getElementById('scan-btn');
+        const list = document.getElementById('networks-list');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Scanning...';
+        list.style.display = 'none';
+
+        fetch('/api/wifi/scan', { method: 'POST' })
+            .then(res => res.json())
+            .then(networks => {
+                list.innerHTML = '';
+                if (networks.error) {
+                    list.innerHTML = `<li class="list-group-item list-group-item-danger">${networks.error}</li>`;
+                } else {
+                    networks.forEach(net => {
+                        list.innerHTML += `<a href="#" class="list-group-item list-group-item-action" data-ssid="${net.ssid}"><b>${net.ssid}</b> (${net.signal}%) <small class="text-muted">${net.security}</small></a>`;
+                    });
+                }
+                list.style.display = 'block';
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-broadcast"></i> Scan Again';
+            });
+    });
+
+    document.getElementById('networks-list').addEventListener('click', e => {
+        if(e.target.classList.contains('list-group-item-action')) {
+            e.preventDefault();
+            const ssid = e.target.dataset.ssid;
+            document.getElementById('selected-ssid').textContent = ssid;
+            document.getElementById('connect-form').style.display = 'block';
+        }
+    });
+
+    document.getElementById('connect-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const ssid = document.getElementById('selected-ssid').textContent;
+        const password = document.getElementById('password').value;
+        const messageEl = document.getElementById('message');
+        
+        const formData = new FormData();
+        formData.append('ssid', ssid);
+        formData.append('password', password);
+        
+        messageEl.innerHTML = `<div class="alert alert-info">Connecting to ${ssid}...</div>`;
+
+        fetch('/api/wifi/connect', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                const alertClass = data.success ? 'alert-success' : 'alert-danger';
+                messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
+            });
+    });
+</script>
+{% endblock %}

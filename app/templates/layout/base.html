@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Conveyor Control{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
+    <style>
+        body { transition: background-color 0.3s, color 0.3s; }
+        .top-bar { background-color: #000 !important; color: #ccc !important; padding: 4px 10px; font-family: monospace; }
+        .status-icon { font-size: 1.1rem; color: #6c757d; transition: color 0.5s ease-in-out; }
+        .status-icon.active.wifi { color: #0d6efd; }
+        .status-icon.active.eth { color: #fd7e14; }
+        .status-icon.active.ble { color: #0dcaf0; }
+        .main-nav { background-color: #212529 !important; }
+        [data-bs-theme="light"] body { background-color: #f8f9fa; color: #212529; }
+        [data-bs-theme="light"] .card { background-color: #fff; border-color: #dee2e6; }
+        [data-bs-theme="light"] .main-nav { background-color: #e9ecef !important; }
+        [data-bs-theme="light"] .navbar-brand, [data-bs-theme="light"] .nav-link { color: #343a40 !important; }
+        [data-bs-theme="light"] .dropdown-menu { --bs-dropdown-bg: #e9ecef; --bs-dropdown-link-color: #212529; --bs-dropdown-link-hover-bg: #dee2e6; }
+        [data-bs-theme="light"] .list-group-item { background-color: #fff !important; color: #212529 !important; border-color: #dee2e6 !important; }
+        [data-bs-theme="light"] .list-group-item-action:hover { background-color: #f0f0f0 !important; }
+        [data-bs-theme="light"] .table-dark { --bs-table-bg: #fff; --bs-table-color: #000; --bs-table-border-color: #dee2e6; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="top-bar d-flex justify-content-between align-items-center">
+        <div class="left-icons d-flex gap-3">
+            <i id="eth-status" class="bi bi-reception-3 status-icon eth" title="Ethernet"></i>
+            <i id="wifi-status" class="bi bi-wifi status-icon wifi" title="WiFi"></i>
+            <i id="ble-status" class="bi bi-bluetooth status-icon ble" title="Bluetooth"></i>
+        </div>
+        <div class="right-time" id="live-time">--:--:--</div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark main-nav">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" height="30" class="d-inline-block align-text-top me-2">
+                Conveyor Control
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav-collapse">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="main-nav-collapse">
+                <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                    <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-house-door-fill"></i> Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/manual-control"><i class="bi bi-joystick"></i> Manual Control</a></li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-info-circle-fill"></i> Info & Diag
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/network-status">Network Status</a></li>
+                            <li><a class="dropdown-item" href="/system-health">System Health</a></li>
+                            <li><a class="dropdown-item" href="/diagnostics">Pin Diagnostics</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear-fill"></i> Configuration
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/app-settings">App Settings</a></li>
+                            <li><a class="dropdown-item" href="/printer-configure">Printer Configure</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/wifi-configure">Configure WiFi</a></li>
+                            <li><a class="dropdown-item" href="/ble-configure">Configure Bluetooth</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item"><a class="nav-link" href="/support"><i class="bi bi-question-circle-fill"></i> Support</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid p-4">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <div id="virtual-keyboard-container" class="fixed-bottom p-2" style="display:none; z-index: 1055;"></div>
+
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/virtual-keyboard.js') }}"></script>
+    <script>
+        window.applyTheme = () => {
+            const storedTheme = localStorage.getItem('themeChoice');
+            let theme = (storedTheme && storedTheme !== 'auto') ? storedTheme : ((new Date().getHours() >= 20 || new Date().getHours() < 6) ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            const keyboardContainer = document.getElementById('virtual-keyboard-container');
+            keyboardContainer.classList.toggle('bg-light', theme === 'light');
+            keyboardContainer.classList.toggle('bg-dark', theme === 'dark');
+        };
+        function updateTopBar() {
+            document.getElementById('live-time').textContent = new Date().toLocaleTimeString();
+            fetch('/api/network_status').then(res => res.json()).then(data => {
+                document.getElementById('eth-status').classList.toggle('active', data.eth_connected);
+                document.getElementById('wifi-status').classList.toggle('active', data.wifi_connected);
+                document.getElementById('ble-status').classList.toggle('active', data.ble_connected);
+            });
+        }
+        document.addEventListener('DOMContentLoaded', () => { window.applyTheme(); updateTopBar(); setInterval(updateTopBar, 5000); });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,47 @@
+{% extends 'layout/base.html' %}
+{% block title %}Admin Unlock{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 600px; margin-top: 10vh;">
+    <div class="card text-center">
+        <div class="card-header">
+            <h3>System Unlock</h3>
+        </div>
+        <div class="card-body p-4">
+            <p>Enter the master unlock code to close the application and access the desktop.</p>
+            <form id="unlock-form">
+                <div class="mb-3">
+                    <input type="password" id="unlock-code" class="form-control form-control-lg text-center virtual-keyboard-input" placeholder="Enter Code...">
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-danger btn-lg">Unlock System</button>
+                </div>
+            </form>
+            <div id="unlock-message" class="mt-3"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('unlock-form').addEventListener('submit', e => {
+        e.preventDefault();
+        const code = document.getElementById('unlock-code').value;
+        const messageEl = document.getElementById('unlock-message');
+
+        const formData = new FormData();
+        formData.append('code', code);
+
+        fetch('/api/unlock', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                const alertClass = data.success ? 'alert-success' : 'alert-danger';
+                messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
+                if (!data.success) {
+                    setTimeout(() => { messageEl.innerHTML = ''; }, 3000);
+                }
+            });
+    });
+</script>
+{% endblock %}

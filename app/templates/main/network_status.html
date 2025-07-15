@@ -1,0 +1,57 @@
+{% extends 'layout/base.html' %}
+{% block title %}Network Status{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 class="display-4 text-center mb-4">Network Status</h1>
+    <div class="card">
+        <div class="list-group list-group-flush">
+            <div class="list-group-item bg-dark text-light">
+                <div class="d-flex w-100 justify-content-between">
+                    <h3 class="mb-1"><i class="bi bi-wifi text-primary"></i> WiFi</h3>
+                    <span id="wifi_icon"></span>
+                </div>
+                <p class="mb-1 fs-5">SSID: <strong id="wifi_ssid" class="font-monospace">--</strong></p>
+            </div>
+             <div class="list-group-item bg-dark text-light">
+                <div class="d-flex w-100 justify-content-between">
+                    <h3 class="mb-1"><i class="bi bi-reception-3 text-warning"></i> General</h3>
+                </div>
+                <p class="mb-1 fs-5">IP Address: <strong id="ip_address" class="font-monospace">--</strong></p>
+            </div>
+            <div class="list-group-item bg-dark text-light">
+                <div class="d-flex w-100 justify-content-between">
+                    <h3 class="mb-1"><i class="bi bi-bluetooth text-info"></i> Bluetooth</h3>
+                    <span id="ble_icon"></span>
+                </div>
+                <p class="mb-1 fs-5">Default Printer Address:</p>
+                <strong id="ble_device" class="font-monospace" style="word-wrap:break-word;">None</strong>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function updateNetworkStatus() {
+         fetch('/api/network_status')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('wifi_ssid').textContent = data.ssid;
+                document.getElementById('ip_address').textContent = data.ip_address;
+                document.getElementById('ble_device').textContent = data.ble_device;
+                
+                const wifiIcon = document.getElementById('wifi_icon');
+                const bleIcon = document.getElementById('ble_icon');
+
+                wifiIcon.innerHTML = data.wifi_connected ? '<span class="badge bg-success">Connected</span>' : '<span class="badge bg-secondary">Disconnected</span>';
+                bleIcon.innerHTML = data.ble_connected ? '<span class="badge bg-success">Saved</span>' : '<span class="badge bg-secondary">None</span>';
+            });
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        updateNetworkStatus();
+        setInterval(updateNetworkStatus, 5000);
+    });
+</script>
+{% endblock %}

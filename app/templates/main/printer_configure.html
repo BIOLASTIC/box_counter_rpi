@@ -1,0 +1,129 @@
+{% extends 'layout/base.html' %}
+{% block title %}Printer Configuration{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-switch .form-check-input {
+        width: 3.5em;
+        height: 1.75em;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 900px;">
+    <h1 class="display-4 text-center mb-4">Printer Configuration</h1>
+    <p class="text-center text-muted">Configure the data to be sent to the default Bluetooth printer when an object is detected.</p>
+
+    <form id="printer-config-form">
+        <!-- Master Toggle Switch -->
+        <div class="card mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h3 class="mb-0"><i class="bi bi-printer-fill"></i> Automatic Printing</h3>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="printer-enabled-switch" name="enabled">
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Configuration -->
+        <div class="card mb-4">
+            <div class="card-header fs-4">Data Payload</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h5>Text Data</h5>
+                        <div class="mb-2">
+                            <label for="var1" class="form-label">Variable 1 Name</label>
+                            <input type="text" id="var1" name="var1" class="form-control virtual-keyboard-input">
+                        </div>
+                        <div>
+                            <label for="val1" class="form-label">Variable 1 Value</label>
+                            <input type="text" id="val1" name="val1" class="form-control virtual-keyboard-input">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>QR Data</h5>
+                        <div class="mb-2">
+                            <label for="var2" class="form-label">Variable 2 Name</label>
+                            <input type="text" id="var2" name="var2" class="form-control virtual-keyboard-input">
+                        </div>
+                        <div>
+                            <label for="val2" class="form-label">Variable 2 Value</label>
+                            <input type="text" id="val2" name="val2" class="form-control virtual-keyboard-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delay Configuration -->
+        <div class="card mb-4">
+            <div class="card-header fs-4">Timing</div>
+            <div class="card-body">
+                <label for="delay_ms" class="form-label">Print Delay (in milliseconds)</label>
+                <input type="number" id="delay_ms" name="delay_ms" class="form-control virtual-keyboard-input" placeholder="e.g., 500">
+            </div>
+        </div>
+
+        <!-- Save Button -->
+        <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">Save Configuration</button>
+        </div>
+    </form>
+    <div id="message-area" class="mt-3"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showMessage(msg, isSuccess) {
+        const area = document.getElementById('message-area');
+        const alertClass = isSuccess ? 'alert-success' : 'alert-danger';
+        area.innerHTML = `<div class="alert ${alertClass}" role="alert">${msg}</div>`;
+        setTimeout(() => { area.innerHTML = ''; }, 3000);
+    }
+
+    const form = document.getElementById('printer-config-form');
+
+    // Load existing settings when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch('/api/get_printer_config')
+            .then(res => res.json())
+            .then(config => {
+                form.elements['enabled'].checked = config.enabled;
+                form.elements['delay_ms'].value = config.delay_ms;
+                form.elements['var1'].value = config.var1;
+                form.elements['val1'].value = config.val1;
+                form.elements['var2'].value = config.var2;
+                form.elements['val2'].value = config.val2;
+            });
+    });
+
+    // Handle form submission to save settings
+    form.addEventListener('submit', e => {
+        e.preventDefault();
+        
+        const settings = {
+            enabled: form.elements['enabled'].checked,
+            delay_ms: form.elements['delay_ms'].value,
+            var1: form.elements['var1'].value,
+            val1: form.elements['val1'].value,
+            var2: form.elements['var2'].value,
+            val2: form.elements['val2'].value,
+        };
+
+        fetch('/api/save_printer_config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(res => res.json())
+        .then(data => {
+            showMessage(data.message, data.success);
+        });
+    });
+</script>
+{% endblock %}

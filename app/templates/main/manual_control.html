@@ -1,0 +1,71 @@
+{% extends 'layout/base.html' %}
+{% block title %}Manual Control{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 class="display-4 text-center mb-4">Manual Device Control</h1>
+    <p class="text-center text-muted">This page allows for direct control of individual components. The main automation loop may override these settings.</p>
+
+    <div id="control-panel">
+        <!-- Gate Control -->
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-sign-turn-right-fill"></i> Gate Cylinder</h4>
+                <div class="btn-group">
+                    <button class="btn btn-lg btn-success" data-device="gate" data-action="on">Open Gate</button>
+                    <button class="btn btn-lg btn-danger" data-device="gate" data-action="off">Close Gate</button>
+                </div>
+            </div>
+        </div>
+        <!-- Green LED -->
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-lightbulb-fill text-success"></i> Green Light</h4>
+                <div class="btn-group">
+                    <button class="btn btn-lg btn-outline-success" data-device="green_led" data-action="on">Turn On</button>
+                    <button class="btn btn-lg btn-outline-secondary" data-device="green_led" data-action="off">Turn Off</button>
+                </div>
+            </div>
+        </div>
+        <!-- Red LED -->
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-lightbulb-fill text-danger"></i> Red Light</h4>
+                <div class="btn-group">
+                    <button class="btn btn-lg btn-outline-danger" data-device="red_led" data-action="on">Turn On</button>
+                    <button class="btn btn-lg btn-outline-secondary" data-device="red_led" data-action="off">Turn Off</button>
+                </div>
+            </div>
+        </div>
+        <!-- Buzzer -->
+        <div class="card mb-3">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <h4 class="mb-0"><i class="bi bi-volume-up-fill text-warning"></i> Buzzer</h4>
+                <button class="btn btn-lg btn-warning" data-device="buzzer" data-action="beep">Beep Once</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('control-panel').addEventListener('click', function(e) {
+        const button = e.target.closest('button');
+        if (!button) return;
+
+        const device = button.dataset.device;
+        const action = button.dataset.action;
+
+        const formData = new FormData();
+        formData.append('device', device);
+        formData.append('action', action);
+
+        fetch('/api/manual_relay_control', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                console.log(data.message); // Log action to console for debugging
+            });
+    });
+</script>
+{% endblock %}

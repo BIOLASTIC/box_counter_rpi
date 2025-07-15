@@ -1,0 +1,76 @@
+{% extends 'layout/base.html' %}
+{% block title %}System Health{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <h1 class="display-4 text-center mb-4">System Health & Actions</h1>
+    
+    <div class="card mb-4">
+        <div class="list-group list-group-flush">
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <h3><i class="bi bi-cpu me-2"></i>CPU Usage</h3><h3 id="cpu_usage" class="font-monospace">--</h3>
+            </div>
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <h3><i class="bi bi-thermometer-half me-2"></i>CPU Temperature</h3><h3 id="cpu_temp" class="font-monospace">--</h3>
+            </div>
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <h3><i class="bi bi-memory me-2"></i>Memory Usage</h3><h3 id="memory_usage" class="font-monospace">--</h3>
+            </div>
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <h3><i class="bi bi-clock-history me-2"></i>System Uptime</h3><h3 id="uptime" class="font-monospace">--</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-warning mt-4">
+        <div class="card-header bg-warning text-dark"><h4 class="mb-0"><i class="bi bi-exclamation-triangle-fill"></i> System Actions</h4></div>
+        <div class="card-body">
+            <p class="text-muted">These actions will interrupt the system. Use with caution.</p>
+            <div class="d-grid gap-3 d-md-flex justify-content-center">
+                <button class="btn btn-lg btn-warning text-dark" id="restart-app-btn"><i class="bi bi-arrow-clockwise"></i> Restart Application</button>
+                <button class="btn btn-lg btn-danger" id="reboot-system-btn"><i class="bi bi-bootstrap-reboot"></i> Reboot System</button>
+                <button class="btn btn-lg btn-dark" id="shutdown-system-btn"><i class="bi bi-power"></i> Shutdown System</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-danger mt-4">
+        <div class="card-header bg-danger text-white"><h4 class="mb-0"><i class="bi bi-shield-lock-fill"></i> Admin Access</h4></div>
+        <div class="card-body text-center">
+            <p class="text-muted">Exit the application's Kiosk Mode to access the underlying desktop.</p>
+            <div class="d-grid"><a href="/admin-unlock" class="btn btn-danger btn-lg">Go to Admin Unlock Page</a></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function updateSystemHealth() {
+        fetch('/api/system_health').then(res => res.json()).then(data => {
+            document.getElementById('cpu_usage').textContent = data.cpu_usage;
+            document.getElementById('cpu_temp').textContent = data.cpu_temp;
+            document.getElementById('memory_usage').textContent = data.memory_usage;
+            document.getElementById('uptime').textContent = data.uptime;
+        });
+    }
+
+    document.getElementById('restart-app-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to restart the application? The UI will disconnect briefly.')) {
+            fetch('/api/restart_application', { method: 'POST' }).then(res => res.json()).then(data => alert(data.message));
+        }
+    });
+    document.getElementById('reboot-system-btn').addEventListener('click', () => {
+        if (confirm('WARNING: This will REBOOT the entire system. Are you sure?')) {
+            fetch('/api/reboot_system', { method: 'POST' }).then(res => res.json()).then(data => alert(data.message));
+        }
+    });
+    document.getElementById('shutdown-system-btn').addEventListener('click', () => {
+        if (confirm('WARNING: This will SHUT DOWN the system. It will not turn back on by itself. Are you sure?')) {
+            fetch('/api/shutdown_system', { method: 'POST' }).then(res => res.json()).then(data => alert(data.message));
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => { updateSystemHealth(); setInterval(updateSystemHealth, 2000); });
+</script>
+{% endblock %}

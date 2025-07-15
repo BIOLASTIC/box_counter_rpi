@@ -1,0 +1,31 @@
+{% extends 'layout/base.html' %}
+{% block title %}Support Information{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px;">
+    <div class="card">
+        <div class="card-body p-lg-5 text-center">
+            
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Biolastic Logo" class="img-fluid rounded mb-4" style="max-height: 150px;">
+
+            <h1 class="display-5">Biolastic Siliguri</h1>
+            <hr>
+            <div class="fs-4 mt-4">
+                <p>
+                    <i class="bi bi-geo-alt-fill me-2"></i>
+                    Shiv Shakti Kali Bari Rd, Sukantapally, Ward 33, Siliguri, West Bengal 734005
+                </p>
+                <p>
+                    <i class="bi bi-telephone-fill me-2"></i>
+                    +91 81015 59957
+                </p>
+                <p>
+                    <i class="bi bi-envelope-fill me-2"></i>
+                    info@biolastic.co.in
+                </p>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

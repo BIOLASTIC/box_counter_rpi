@@ -1,0 +1,225 @@
+{% extends 'layout/base.html' %}
+{% block title %}Bluetooth Peripherals{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 900px;">
+    <h1 class="display-4 text-center mb-4">Connect to Bluetooth Peripherals</h1>
+
+    <!-- Live Connection Status Card -->
+    <div class="card border-secondary mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h3><i class="bi bi-reception-4"></i> Connection Status</h3>
+            <span id="ble-status-badge" class="badge fs-5 bg-secondary">...</span>
+        </div>
+        <div class="card-body">
+            <h5>Current Default Printer:</h5>
+            {% if saved_address %}
+                <p class="font-monospace mb-0"><strong>Address:</strong> <span id="current_address">{{ saved_address }}</span></p>
+                <p class="font-monospace"><strong>Write UUID:</strong> <span id="current_char">{{ saved_char }}</span></p>
+                <button class="btn btn-danger mt-2" id="remove-device-btn"><i class="bi bi-trash-fill"></i> Remove This Device</button>
+            {% else %}
+                <p id="no-device-msg">No default printer saved. Please scan and save a device below.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Test Print Card -->
+    <div class="card border-secondary mb-4" id="test-print-card" {% if not saved_address %}style="display:none;"{% endif %}>
+        <div class="card-header">
+            <h3><i class="bi bi-input-cursor-text"></i> Test Device</h3>
+        </div>
+        <div class="card-body">
+            <form id="test-print-form">
+                <div class="input-group">
+                    <input type="text" class="form-control form-control-lg virtual-keyboard-input" placeholder="Enter text to send..." id="test-text" required>
+                    <button class="btn btn-success" type="submit" id="send-btn">Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Configuration Steps -->
+    <div class="card border-secondary">
+        <div class="card-body">
+            <h3 class="mb-3">Device Discovery</h3>
+            <div class="d-grid mb-4">
+                <button id="scan-btn" class="btn btn-primary btn-lg"><i class="bi bi-broadcast"></i> Scan for BLE Peripherals</button>
+            </div>
+            <ul id="devices-list" class="list-group"></ul>
+            <div id="characteristics-section" class="mt-4" style="display:none;">
+                <h5 class="mb-3">Select Writable Characteristic for <span id="selected-device" class="text-info"></span></h5>
+                <ul id="characteristics-list" class="list-group"></ul>
+            </div>
+        </div>
+    </div>
+    <div id="message-area" class="mt-3"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedAddress = '';
+
+    function showMessage(msg, isSuccess) {
+        const area = document.getElementById('message-area');
+        const alertClass = isSuccess ? 'alert-success' : 'alert-danger';
+        area.innerHTML = `<div class="alert ${alertClass}" role="alert">${msg}</div>`;
+        setTimeout(() => { area.innerHTML = ''; }, 4000);
+    }
+
+    // This main handler ensures all JavaScript runs after the page is fully loaded.
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // Function to update the live connection status badge
+        function updateConnectionStatus() {
+            fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {
+                    const statusBadge = document.getElementById('ble-status-badge');
+                    const statusText = data.ble_connection_status || "Unknown";
+                    statusBadge.textContent = statusText;
+                    
+                    let badgeClass = 'bg-secondary';
+                    if (statusText === 'Connected') badgeClass = 'bg-success';
+                    else if (statusText === 'Connecting...') badgeClass = 'bg-warning text-dark';
+                    else if (statusText === 'Disconnected') badgeClass = 'bg-danger';
+                    
+                    statusBadge.className = `badge fs-5 ${badgeClass}`;
+                });
+        }
+        
+        // Start polling the connection status
+        updateConnectionStatus();
+        setInterval(updateConnectionStatus, 3000);
+
+        // Attach listener to the Scan button
+        document.getElementById('scan-btn').addEventListener('click', e => {
+            const btn = e.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Scanning...';
+            document.getElementById('devices-list').innerHTML = '';
+            document.getElementById('characteristics-section').style.display = 'none';
+
+            fetch('/api/ble/scan', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById('devices-list');
+                    list.innerHTML = '';
+                    if (data.error) {
+                        list.innerHTML = `<li class="list-group-item list-group-item-danger">${data.error}</li>`;
+                    } else if (data.length === 0) {
+                        list.innerHTML = `<li class="list-group-item">No devices found.</li>`;
+                    } else {
+                        data.forEach(dev => {
+                            list.innerHTML += `<a href="#" class="list-group-item list-group-item-action" data-address="${dev.address}"><b>${dev.name}</b><br><small class="text-muted">${dev.address}</small></a>`;
+                        });
+                    }
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-broadcast"></i> Scan Again';
+                });
+        });
+
+        // Attach listener to the list of scanned devices
+        document.getElementById('devices-list').addEventListener('click', e => {
+            e.preventDefault();
+            const target = e.target.closest('.list-group-item-action');
+            if (!target) return;
+
+            selectedAddress = target.dataset.address;
+            const charSection = document.getElementById('characteristics-section');
+            const charList = document.getElementById('characteristics-list');
+            
+            document.getElementById('selected-device').textContent = selectedAddress;
+            charSection.style.display = 'block';
+            charList.innerHTML = '<li class="list-group-item"><span class="spinner-border spinner-border-sm"></span> Getting characteristics...</li>';
+
+            const formData = new FormData();
+            formData.append('address', selectedAddress);
+
+            fetch('/api/ble/get-characteristics', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    charList.innerHTML = '';
+                    if (data.error) {
+                        charList.innerHTML = `<li class="list-group-item list-group-item-danger">${data.error}</li>`;
+                        return;
+                    }
+                    const writableChars = data.filter(char => char.properties.toLowerCase().includes('write'));
+                    if (writableChars.length === 0) {
+                        charList.innerHTML = `<li class="list-group-item">No writable characteristics found on this device.</li>`;
+                    } else {
+                        writableChars.forEach(char => {
+                            charList.innerHTML += `<a href="#" class="list-group-item list-group-item-action" data-uuid="${char.uuid}">
+                                <b>UUID:</b> ${char.uuid}<br>
+                                <small class="text-muted">Properties: ${char.properties}</small>
+                                <button class="btn btn-success btn-sm float-end">Save as Default</button>
+                            </a>`;
+                        });
+                    }
+                });
+        });
+
+        // Attach listener to the characteristics list (for saving)
+        document.getElementById('characteristics-list').addEventListener('click', e => {
+            e.preventDefault();
+            const target = e.target.closest('button');
+            if (!target) return;
+            const parentLink = target.closest('.list-group-item-action');
+            if (!parentLink) return;
+
+            const charUuid = parentLink.dataset.uuid;
+            const formData = new FormData();
+            formData.append('address', selectedAddress);
+            formData.append('characteristic_uuid', charUuid);
+
+            fetch('/api/ble/save-device', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    showMessage(data.message, data.success);
+                    if (data.success) {
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                });
+        });
+
+        // Attach listener to the Test Print form
+        const testPrintForm = document.getElementById('test-print-form');
+        if (testPrintForm) {
+            testPrintForm.addEventListener('submit', e => {
+                e.preventDefault();
+                const btn = document.getElementById('send-btn');
+                const text = document.getElementById('test-text').value;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+                const formData = new FormData();
+                formData.append('text', text);
+
+                fetch('/api/ble/test-print', { method: 'POST', body: formData })
+                    .then(res => res.json())
+                    .then(data => { showMessage(data.message, data.success); })
+                    .finally(() => { btn.disabled = false; btn.innerHTML = 'Send'; });
+            });
+        }
+
+        // Attach listener to the Remove Device button
+        const removeBtn = document.getElementById('remove-device-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to remove the default printer?')) {
+                    fetch('/api/ble/remove-device', { method: 'POST' })
+                        .then(res => res.json())
+                        .then(data => {
+                            showMessage(data.message, data.success);
+                            if (data.success) {
+                                setTimeout(() => window.location.reload(), 1500);
+                            }
+                        });
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}
