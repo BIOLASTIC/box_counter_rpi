@@ -9,42 +9,42 @@ from . import hardware, wifi, ble, database, system
 
 main_bp = Blueprint('main', __name__)
 
-# --- Page Rendering Routes (Unchanged) ---
-@main_bp.route('/')
-def index(): return render_template('index.html')
+# # --- Page Rendering Routes (Unchanged) ---
+# @main_bp.route('/')
+# def index(): return render_template('index.html')
 
-@main_bp.route('/manual-control')
-def manual_control(): return render_template('main/manual_control.html')
+# @main_bp.route('/manual-control')
+# def manual_control(): return render_template('main/manual_control.html')
 
-@main_bp.route('/diagnostics')
-def diagnostics(): return render_template('main/diagnostics.html', pin_config=hardware.PIN_CONFIG)
+# @main_bp.route('/diagnostics')
+# def diagnostics(): return render_template('main/diagnostics.html', pin_config=hardware.PIN_CONFIG)
 
-@main_bp.route('/system-health')
-def system_health(): return render_template('main/system_health.html')
+# @main_bp.route('/system-health')
+# def system_health(): return render_template('main/system_health.html')
 
-@main_bp.route('/network-status')
-def network_status(): return render_template('main/network_status.html')
+# @main_bp.route('/network-status')
+# def network_status(): return render_template('main/network_status.html')
 
-@main_bp.route('/wifi-configure')
-def wifi_configure(): return render_template('wifi/configure.html')
+# @main_bp.route('/wifi-configure')
+# def wifi_configure(): return render_template('wifi/configure.html')
 
-@main_bp.route('/ble-configure')
-def ble_configure():
-    saved_address = database.get_setting('printer_address')
-    saved_char = database.get_setting('write_characteristic_uuid')
-    return render_template('ble/configure.html', saved_address=saved_address, saved_char=saved_char)
+# @main_bp.route('/ble-configure')
+# def ble_configure():
+#     saved_address = database.get_setting('printer_address')
+#     saved_char = database.get_setting('write_characteristic_uuid')
+#     return render_template('ble/configure.html', saved_address=saved_address, saved_char=saved_char)
 
-@main_bp.route('/app-settings')
-def app_settings(): return render_template('main/app_settings.html')
+# @main_bp.route('/app-settings')
+# def app_settings(): return render_template('main/app_settings.html')
 
-@main_bp.route('/printer-configure')
-def printer_configure(): return render_template('main/printer_configure.html')
+# @main_bp.route('/printer-configure')
+# def printer_configure(): return render_template('main/printer_configure.html')
 
-@main_bp.route('/admin-unlock')
-def admin_unlock_page(): return render_template('admin/unlock.html')
+# @main_bp.route('/admin-unlock')
+# def admin_unlock_page(): return render_template('admin/unlock.html')
 
-@main_bp.route('/support')
-def support(): return render_template('main/support.html')
+# @main_bp.route('/support')
+# def support(): return render_template('main/support.html')
 
 
 # --- API Endpoints ---
