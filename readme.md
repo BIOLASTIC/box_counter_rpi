@@ -1,7 +1,9 @@
 
 sudo systemctl daemon-reload
 sudo systemctl restart conveyor.service
+sudo systemctl stop conveyor.service
 
+source .venv/bin/activate
 
 sudo nano /etc/systemd/system/conveyor.service
 

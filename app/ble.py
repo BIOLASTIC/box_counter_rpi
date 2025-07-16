@@ -1,6 +1,7 @@
 """
-This is the CORRECTED and complete version of ble.py with proper lock
-management to prevent deadlocks during startup and reconnection.
+This is the CORRECTED and complete version of ble.py.
+The start_ble_connection_manager_thread function has been removed
+as the task will now be started directly by SocketIO in __init__.py.
 """
 import asyncio
 import time
@@ -13,85 +14,58 @@ def connection_manager_loop():
     """
     A loop that runs in a background thread to manage the BLE connection.
     """
-    print("[BLE Manager] Starting background connection manager thread.")
-    
-    # An asyncio event loop that will run in this background thread.
+    print("[BLE Manager] Starting background connection manager loop...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
     while True:
-        device_address = database.get_setting('printer_address')
-        
-        # Safely get the client object from the global state
-        with hardware.state['lock']:
-            client = hardware.state.get('ble_printer_client')
-        
-        is_connected = client and client.is_connected
-
-        if not device_address:
-            # No device saved. If we were connected, disconnect.
-            if is_connected:
-                print("[BLE Manager] Default device removed. Disconnecting...")
-                loop.run_until_complete(client.disconnect())
-                with hardware.state['lock']:
-                    hardware.state['ble_printer_client'] = None
-                    hardware.state['ble_connection_status'] = "Disconnected"
-            # Wait a while before checking the database again for a new device
-            time.sleep(15)
-            continue
-
-        # If we have a device saved but are not connected, try to connect.
-        if not is_connected:
-            loop.run_until_complete(connect_and_manage_device(device_address, loop))
-            
-            # After a connection attempt (whether it succeeded or failed),
-            # wait for the configured interval before retrying.
-            print("[BLE Manager] Waiting 60 seconds before next connection attempt...")
-            time.sleep(60)
-        else:
-            # We are connected, so we'll check again in a little while
-            # to make sure the connection is still active.
-            time.sleep(15)
+        try:
+            device_address = database.get_setting('printer_address')
+            with hardware.state['lock']:
+                client = hardware.state.get('ble_printer_client')
+            is_connected = client and client.is_connected
+            if not device_address:
+                if is_connected:
+                    print("[BLE Manager] Default device removed. Disconnecting...")
+                    loop.run_until_complete(client.disconnect())
+                    with hardware.state['lock']:
+                        hardware.state['ble_printer_client'] = None
+                        hardware.state['ble_connection_status'] = "Disconnected"
+                time.sleep(15)
+                continue
+            if not is_connected:
+                print(f"[BLE Manager] Found device {device_address}, attempting connection...")
+                loop.run_until_complete(connect_and_manage_device(device_address, loop))
+                print("[BLE Manager] Waiting 60 seconds before next connection attempt...")
+                time.sleep(60)
+            else:
+                time.sleep(15)
+        except Exception as e:
+            print(f"[ERROR in connection_manager_loop]: {e}")
+            time.sleep(30) # Wait longer if there's a loop error
 
 async def connect_and_manage_device(address, loop):
     """The async part of the connection logic with corrected locking."""
-    print(f"[BLE Manager] Attempting to connect to default printer: {address}")
-    
-    # Acquire lock ONLY to update the status, then release it immediately.
+    print(f"[BLE Connect] Attempting: {address}")
     with hardware.state['lock']:
         hardware.state['ble_connection_status'] = "Connecting..."
-
-    new_client = None  # Define client outside the try block
     try:
-        # Perform the long-running connection attempt OUTSIDE of any lock.
         new_client = BleakClient(address, loop=loop)
-        await new_client.connect()
-
-        # Re-acquire the lock only to update the state with the connection result.
+        await new_client.connect(timeout=10.0)
         with hardware.state['lock']:
             if new_client.is_connected:
-                print(f"[BLE Manager] Successfully connected to {address}.")
+                print(f"[BLE Connect] Success: {address}.")
                 hardware.state['ble_printer_client'] = new_client
                 hardware.state['ble_connection_status'] = "Connected"
             else:
                 hardware.state['ble_printer_client'] = None
                 hardware.state['ble_connection_status'] = "Disconnected"
-
     except Exception as e:
-        print(f"[BLE Manager] Connection to {address} failed. Error: {e}")
-        # If the connection fails, re-acquire the lock to update the status.
+        print(f"[BLE Connect] Failed: {address}. Error: {e}")
         with hardware.state['lock']:
             hardware.state['ble_printer_client'] = None
             hardware.state['ble_connection_status'] = "Disconnected"
 
-def start_ble_connection_manager_thread():
-    """Helper function called from __init__.py to start the manager thread."""
-    thread = threading.Thread(target=connection_manager_loop, daemon=True)
-    thread.start()
-
-
-# --- ON-DEMAND FUNCTIONS (for scanning, etc.) ---
-
+# --- On-Demand Functions (Unchanged) ---
 async def scan_ble_devices(timeout=10.0):
     """Scans for BLE devices and returns a list of them."""
     print(f"[BLE Scan] Starting BLE device scan for {timeout} seconds...")
@@ -105,7 +79,7 @@ async def get_characteristics(device_address):
     """Connects to a device temporarily just to discover its services."""
     print(f"[BLE Get-Chars] Connecting temporarily to {device_address}...")
     try:
-        async with BleakClient(device_address) as client:
+        async with BleakClient(device_address, timeout=10.0) as client:
             return [{
                 "uuid": char.uuid,
                 "description": char.description,
@@ -116,5 +90,4 @@ async def get_characteristics(device_address):
 
 def run_async(coro):
     """Helper to run async functions from sync Flask code."""
-    # This creates a new event loop for each on-demand task, ensuring thread safety.
     return asyncio.run(coro)

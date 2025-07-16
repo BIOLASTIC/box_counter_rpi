@@ -52,26 +52,23 @@
 
 {% block extra_js %}
 <script>
-    function updatePinStatus() {
-        fetch('/api/pin_status')
-            .then(res => res.json())
-            .then(data => {
-                for (const component in data) {
-                    const value = data[component];
-                    const stateEl = document.getElementById(component + '_STATE');
-                    if (stateEl) {
-                        const isHigh = (value === 1);
-                        const stateText = isHigh ? 'HIGH' : 'LOW';
-                        const badgeClass = isHigh ? 'bg-success' : 'bg-danger';
-                        stateEl.innerHTML = `<span class="badge ${badgeClass}">${stateText}</span>`;
-                    }
-                }
-            });
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
-        updatePinStatus();
-        setInterval(updatePinStatus, 500);
+        const socket = io(); // Connect to the WebSocket server
+
+        // Listen for 'pin_update' events broadcasted from the server
+        socket.on('pin_update', (data) => {
+            console.log('Received pin_update:', data); // For debugging
+            for (const component in data) {
+                const value = data[component];
+                const stateEl = document.getElementById(component + '_STATE');
+                if (stateEl) {
+                    const isHigh = (value === 1);
+                    const stateText = isHigh ? 'HIGH' : 'LOW';
+                    const badgeClass = isHigh ? 'bg-success' : 'bg-danger';
+                    stateEl.innerHTML = `<span class="badge ${badgeClass}">${stateText}</span>`;
+                }
+            }
+        });
     });
 </script>
 {% endblock %}

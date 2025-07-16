@@ -84,7 +84,7 @@
             <div class="card-body p-4">
                 <h2 class="card-title mb-4"><i class="bi bi-pencil-square"></i> Set New Configuration</h2>
                 <form id="configForm">
-                    <!-- NEW: Shortcut Buttons -->
+                    <!-- Shortcut Buttons -->
                     <div class="mb-3">
                         <label class="form-label">Batch Target Shortcuts</label>
                         <div class="d-flex flex-wrap gap-2" id="shortcut-container">
@@ -120,54 +120,80 @@
 
 {% block extra_js %}
 <script>
-    function updateDashboardStatus() {
-        fetch('/api/status')
-            .then(res => res.json())
-            .then(data => {
-                // Update all the new cards
-                document.getElementById('live_count').textContent = `${data.object_count} / ${data.batch_target}`;
-                document.getElementById('gate_status').textContent = data.gate_status.toUpperCase();
-                document.getElementById('ir_status').textContent = data.ir_status.toUpperCase();
-                document.getElementById('batches_completed').textContent = data.batches_completed;
-                document.getElementById('last_printed_payload').textContent = data.last_printed_payload;
-
-                // Gate status color
-                document.getElementById('gate_status').className = data.gate_status === 'Open' ? 'display-1 text-white' : 'display-1 text-warning';
-                
-                // IR sensor status color
-                document.getElementById('ir_status').className = data.ir_status === 'Blocked' ? 'display-4 text-warning' : 'display-4 text-white';
-
-                // System status badge
-                const systemStatusEl = document.getElementById('system_status');
-                let badgeClass = 'bg-secondary';
-                if (data.system_status.includes('Ready')) badgeClass = 'bg-success';
-                if (data.system_status.includes('Counting')) badgeClass = 'bg-info text-dark';
-                if (data.system_status.includes('Waiting') || data.system_status.includes('Closing')) badgeClass = 'bg-warning text-dark';
-                systemStatusEl.innerHTML = `<span class="badge fs-4 ${badgeClass}">${data.system_status}</span>`;
-                
-                // Update the read-only display card
-                document.getElementById('display_batch_target').textContent = data.batch_target;
-                document.getElementById('display_gate_wait_time').textContent = `${data.gate_wait_time} sec`;
-            });
-    }
-
-    // NEW: Event listener for shortcut buttons
-    document.getElementById('shortcut-container').addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON') {
-            const value = e.target.dataset.value;
-            document.getElementById('batch_target').value = value;
-        }
-    });
-
-    // Form submission listener is unchanged
-    document.getElementById('configForm').addEventListener('submit', function(e) { /* ... */ });
-    // Reset button listener is unchanged
-    document.getElementById('resetBtn').addEventListener('click', function() { /* ... */ });
-
-    // Initial load and interval
+    // This entire script block is rewritten for WebSockets
     document.addEventListener('DOMContentLoaded', () => {
-        updateDashboardStatus();
-        setInterval(updateDashboardStatus, 1000);
+        const socket = io(); // Connect to the WebSocket server
+
+        // --- WebSocket Listener for Dashboard Updates ---
+        socket.on('status_update', (data) => {
+            console.log('Received status_update:', data); // For debugging
+            
+            // Update all display cards
+            document.getElementById('live_count').textContent = `${data.object_count} / ${data.batch_target}`;
+            document.getElementById('gate_status').textContent = data.gate_status.toUpperCase();
+            document.getElementById('ir_status').textContent = data.ir_status.toUpperCase();
+            document.getElementById('batches_completed').textContent = data.batches_completed;
+            document.getElementById('last_printed_payload').textContent = data.last_printed_payload;
+
+            // Update colors and badges
+            document.getElementById('gate_status').className = data.gate_status === 'Open' ? 'display-1 text-white' : 'display-1 text-warning';
+            document.getElementById('ir_status').className = data.ir_status === 'Blocked' ? 'display-4 text-warning' : 'display-4 text-white';
+
+            const systemStatusEl = document.getElementById('system_status');
+            let badgeClass = 'bg-secondary';
+            if (data.system_status.includes('Ready')) badgeClass = 'bg-success';
+            if (data.system_status.includes('Counting')) badgeClass = 'bg-info text-dark';
+            if (data.system_status.includes('Waiting') || data.system_status.includes('Closing')) badgeClass = 'bg-warning text-dark';
+            systemStatusEl.innerHTML = `<span class="badge fs-4 ${badgeClass}">${data.system_status}</span>`;
+
+            // Update the read-only display card
+            document.getElementById('display_batch_target').textContent = data.batch_target;
+            document.getElementById('display_gate_wait_time').textContent = `${data.gate_wait_time} sec`;
+
+            // Update form inputs ONLY if they are not currently focused by the user
+            if (document.activeElement !== document.getElementById('batch_target')) {
+                 document.getElementById('batch_target').value = data.batch_target;
+            }
+            if (document.activeElement !== document.getElementById('gate_wait_time')) {
+                document.getElementById('gate_wait_time').value = data.gate_wait_time;
+            }
+        });
+
+        // --- User-Initiated Actions (These remain mostly the same) ---
+
+        document.getElementById('shortcut-container').addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                document.getElementById('batch_target').value = e.target.dataset.value;
+            }
+        });
+
+        document.getElementById('configForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const messageEl = document.getElementById('message');
+
+            fetch('/api/set_config', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    const alertClass = data.success ? 'alert-success' : 'alert-danger';
+                    messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
+                    // No need to manually update form, the next WebSocket broadcast will do it.
+                    setTimeout(() => { messageEl.innerHTML = ''; }, 3000);
+                });
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            if (confirm('Are you sure you want to reset the live count to 0?')) {
+                const messageEl = document.getElementById('message');
+                fetch('/api/reset_counter', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        const alertClass = data.success ? 'alert-success' : 'alert-danger';
+                        messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
+                        setTimeout(() => { messageEl.innerHTML = ''; }, 3000);
+                    });
+            }
+        });
     });
 </script>
 {% endblock %}

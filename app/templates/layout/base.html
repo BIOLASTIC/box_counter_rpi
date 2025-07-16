@@ -8,11 +8,29 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap-icons.min.css') }}">
     <style>
         body { transition: background-color 0.3s, color 0.3s; }
-        .top-bar { background-color: #000 !important; color: #ccc !important; padding: 4px 10px; font-family: monospace; }
-        .status-icon { font-size: 1.1rem; color: #6c757d; transition: color 0.5s ease-in-out; }
-        .status-icon.active.wifi { color: #0d6efd; }
-        .status-icon.active.eth { color: #fd7e14; }
-        .status-icon.active.ble { color: #0dcaf0; }
+        .top-bar { 
+            background-color: #000 !important; 
+            color: #ccc !important; 
+            padding: 4px 12px; 
+            font-family: monospace; 
+            font-size: 1rem;
+        }
+        .status-icon { 
+            font-size: 1.2rem; 
+            color: #6c757d; /* Default off color */
+            transition: color 0.5s ease-in-out; 
+            vertical-align: middle;
+        }
+        .status-text {
+            color: #999;
+            margin-left: 2px;
+            font-size: 0.9rem;
+            vertical-align: middle;
+        }
+        .status-icon.active { color: #0dcaf0; } /* Generic active color */
+        .status-icon.text-success { color: #198754 !important; }
+        .status-icon.text-primary { color: #0d6efd !important; }
+
         .main-nav { background-color: #212529 !important; }
         [data-bs-theme="light"] body { background-color: #f8f9fa; color: #212529; }
         [data-bs-theme="light"] .card { background-color: #fff; border-color: #dee2e6; }
@@ -27,12 +45,27 @@
 </head>
 <body>
     <div class="top-bar d-flex justify-content-between align-items-center">
-        <div class="left-icons d-flex gap-3">
-            <i id="eth-status" class="bi bi-reception-3 status-icon eth" title="Ethernet"></i>
-            <i id="wifi-status" class="bi bi-wifi status-icon wifi" title="WiFi"></i>
-            <i id="ble-status" class="bi bi-bluetooth status-icon ble" title="Bluetooth"></i>
+        <!-- Left Side: Status Icons -->
+        <div class="left-icons d-flex align-items-center gap-3">
+            <span id="internet-status" data-bs-toggle="tooltip" title="Internet Connection">
+                <i id="icon-internet" class="bi bi-cloud-slash status-icon"></i>
+            </span>
+            <span id="ethernet-status" data-bs-toggle="tooltip" title="Ethernet Connection">
+                <i id="icon-ethernet" class="bi bi-ethernet status-icon"></i>
+            </span>
+            <span id="wifi-status" data-bs-toggle="tooltip" title="WiFi Connection">
+                <i id="icon-wifi" class="bi bi-wifi-off status-icon"></i>
+                <span id="wifi-strength-text" class="status-text"></span>
+            </span>
+            <span id="bluetooth-status" data-bs-toggle="tooltip" title="Bluetooth Printer Status">
+                <i id="icon-ble" class="bi bi-bluetooth status-icon"></i>
+            </span>
         </div>
-        <div class="right-time" id="live-time">--:--:--</div>
+        <!-- Right Side: Date and Time -->
+        <div class="right-time d-flex gap-3">
+            <span id="live-date">--/--/----</span>
+            <span id="live-time">--:--:--</span>
+        </div>
     </div>
 
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark main-nav">
@@ -82,6 +115,8 @@
     
     <div id="virtual-keyboard-container" class="fixed-bottom p-2" style="display:none; z-index: 1055;"></div>
 
+        <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+
     <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/virtual-keyboard.js') }}"></script>
     <script>
@@ -90,19 +125,75 @@
             let theme = (storedTheme && storedTheme !== 'auto') ? storedTheme : ((new Date().getHours() >= 20 || new Date().getHours() < 6) ? 'dark' : 'light');
             document.documentElement.setAttribute('data-bs-theme', theme);
             const keyboardContainer = document.getElementById('virtual-keyboard-container');
-            keyboardContainer.classList.toggle('bg-light', theme === 'light');
-            keyboardContainer.classList.toggle('bg-dark', theme === 'dark');
+            if (keyboardContainer) {
+                keyboardContainer.classList.toggle('bg-light', theme === 'light');
+                keyboardContainer.classList.toggle('bg-dark', theme === 'dark');
+            }
         };
-        function updateTopBar() {
-            document.getElementById('live-time').textContent = new Date().toLocaleTimeString();
-            fetch('/api/network_status').then(res => res.json()).then(data => {
-                document.getElementById('eth-status').classList.toggle('active', data.eth_connected);
-                document.getElementById('wifi-status').classList.toggle('active', data.wifi_connected);
-                document.getElementById('ble-status').classList.toggle('active', data.ble_connected);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            window.applyTheme();
+
+            const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+
+            function updateClock() {
+                const now = new Date();
+                document.getElementById('live-time').textContent = now.toLocaleTimeString();
+                document.getElementById('live-date').textContent = now.toLocaleDateString();
+            }
+            updateClock();
+            setInterval(updateClock, 1000);
+
+            const socket = io();
+
+            socket.on('top_bar_update', (data) => {
+                const internetIcon = document.getElementById('icon-internet');
+                const internetTooltip = bootstrap.Tooltip.getInstance('#internet-status');
+                internetIcon.classList.toggle('bi-cloud-check-fill', data.internet_active);
+                internetIcon.classList.toggle('bi-cloud-slash', !data.internet_active);
+                internetIcon.classList.toggle('text-success', data.internet_active);
+                if (internetTooltip) {
+                    internetTooltip.setContent({ '.tooltip-inner': data.internet_active ? `Internet Access OK (IP: ${data.ip_address})` : 'No Internet Access' });
+                }
+                
+                document.getElementById('icon-ethernet').classList.toggle('active', data.eth_active);
+
+                const wifiIcon = document.getElementById('icon-wifi');
+                const wifiStrengthText = document.getElementById('wifi-strength-text');
+                const wifiTooltip = bootstrap.Tooltip.getInstance('#wifi-status');
+                
+                wifiIcon.className = 'bi status-icon';
+                
+                if(data.wifi_active) {
+                    if (data.wifi_strength > 75) wifiIcon.classList.add('bi-wifi');
+                    else if (data.wifi_strength > 40) wifiIcon.classList.add('bi-wifi-2');
+                    else wifiIcon.classList.add('bi-wifi-1');
+                    wifiIcon.classList.add('active');
+                    wifiStrengthText.textContent = `${data.wifi_strength}%`;
+                    if (wifiTooltip) wifiTooltip.setContent({ '.tooltip-inner': `Connected to: ${data.wifi_ssid}` });
+                } else {
+                    wifiIcon.classList.add('bi-wifi-off');
+                    wifiStrengthText.textContent = '';
+                    if (wifiTooltip) wifiTooltip.setContent({ '.tooltip-inner': 'WiFi Disconnected' });
+                }
+
+                const bleIcon = document.getElementById('icon-ble');
+                const bleTooltip = bootstrap.Tooltip.getInstance('#bluetooth-status');
+                bleIcon.classList.remove('text-success', 'text-primary');
+                if(data.ble_connected) {
+                    bleIcon.classList.add('text-success');
+                    if (bleTooltip) bleTooltip.setContent({ '.tooltip-inner': 'Printer Connected' });
+                } else if(data.ble_saved) {
+                    bleIcon.classList.add('text-primary');
+                    if (bleTooltip) bleTooltip.setContent({ '.tooltip-inner': 'Printer Saved (Disconnected)' });
+                } else {
+                     if (bleTooltip) bleTooltip.setContent({ '.tooltip-inner': 'No Printer Saved' });
+                }
             });
-        }
-        document.addEventListener('DOMContentLoaded', () => { window.applyTheme(); updateTopBar(); setInterval(updateTopBar, 5000); });
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
+   
