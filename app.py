@@ -189,8 +189,8 @@ if __name__ == '__main__':
         startup_thread = threading.Thread(target=system_startup, daemon=True)
         startup_thread.start()
         
-        print("Starting web server on http://0.0.0.0:5000")
-        app.run(host='0.0.0.0', port=5000)
+        print("Starting web server on http://0.0.0.0:5001")
+        app.run(host='0.0.0.0', port=5001)
 
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")

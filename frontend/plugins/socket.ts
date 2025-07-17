@@ -1,9 +1,9 @@
 import { io } from 'socket.io-client'
-import { useApplicationStore } from '~/stores/state'
+import { useApplicationStore } from '../stores/state'
 
 export default defineNuxtPlugin(() => {
   // Connect to the Flask-SocketIO server
-  const socket = io('http://localhost:5000') 
+  const socket = io('http://localhost:5001') 
   const store = useApplicationStore()
 
   socket.on('connect', () => {
