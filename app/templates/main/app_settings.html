@@ -5,7 +5,8 @@
 <div class="container" style="max-width: 800px;">
     <h1 class="display-4 text-center mb-4">Application Settings</h1>
 
-    <div class="card">
+    <!-- Theme Settings Card -->
+    <div class="card mb-4">
         <div class="card-header fs-4">
             <i class="bi bi-palette-fill"></i> Color Theme
         </div>
@@ -24,11 +25,52 @@
             </div>
         </div>
     </div>
+
+    <!-- NEW: Buzzer Settings Card -->
+    <div class="card">
+        <div class="card-header fs-4">
+            <i class="bi bi-volume-up-fill"></i> Buzzer Configuration
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Set the duration for various buzzer alerts in milliseconds (ms). 1000ms = 1 second.</p>
+            <form id="buzzer-settings-form">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="beep_on_count_ms" class="form-label"><b>Count Beep</b></label>
+                        <div class="input-group">
+                            <input type="number" id="beep_on_count_ms" class="form-control form-control-lg virtual-keyboard-input" required>
+                            <span class="input-group-text">ms</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="beep_on_complete_ms" class="form-label"><b>Batch Complete Beep</b></label>
+                         <div class="input-group">
+                            <input type="number" id="beep_on_complete_ms" class="form-control form-control-lg virtual-keyboard-input" required>
+                            <span class="input-group-text">ms</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="beep_on_reset_ms" class="form-label"><b>Reset/Startup Beep</b></label>
+                         <div class="input-group">
+                            <input type="number" id="beep_on_reset_ms" class="form-control form-control-lg virtual-keyboard-input" required>
+                            <span class="input-group-text">ms</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-grid mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg">Save Buzzer Settings</button>
+                </div>
+            </form>
+            <div id="message-area" class="mt-3"></div>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    // --- THEME SETTINGS ---
     // This script block is on the settings page itself to handle button clicks.
     // The main theme logic is in base.html to run on every page.
     const themeButtons = document.querySelectorAll('[data-theme-choice]');
@@ -36,16 +78,55 @@
     themeButtons.forEach(button => {
         button.addEventListener('click', () => {
             const choice = button.dataset.themeChoice;
-            // Store the user's manual choice in the browser's local storage
             localStorage.setItem('themeChoice', choice);
-            
-            // Immediately apply the theme change by calling the global function
-            // (which is defined in base.html)
             window.applyTheme();
-            
-            // Optional: Add visual feedback to show which button is active
             console.log(`Theme set to: ${choice}`);
         });
     });
+
+    // --- BUZZER SETTINGS ---
+    const buzzerForm = document.getElementById('buzzer-settings-form');
+    const messageArea = document.getElementById('message-area');
+
+    function showMessage(msg, isSuccess) {
+        const alertClass = isSuccess ? 'alert-success' : 'alert-danger';
+        messageArea.innerHTML = `<div class="alert ${alertClass}" role="alert">${msg}</div>`;
+        setTimeout(() => { messageArea.innerHTML = ''; }, 3000);
+    }
+
+    // Load existing settings when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        fetch('/api/app_settings')
+            .then(res => res.json())
+            .then(settings => {
+                document.getElementById('beep_on_count_ms').value = settings.beep_on_count_ms;
+                document.getElementById('beep_on_complete_ms').value = settings.beep_on_complete_ms;
+                document.getElementById('beep_on_reset_ms').value = settings.beep_on_reset_ms;
+            });
+    });
+
+    // Handle form submission to save settings
+    buzzerForm.addEventListener('submit', e => {
+        e.preventDefault();
+        
+        const settings = {
+            beep_on_count_ms: document.getElementById('beep_on_count_ms').value,
+            beep_on_complete_ms: document.getElementById('beep_on_complete_ms').value,
+            beep_on_reset_ms: document.getElementById('beep_on_reset_ms').value,
+        };
+
+        fetch('/api/app_settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(res => res.json())
+        .then(data => {
+            showMessage(data.message, data.success);
+        });
+    });
+
 </script>
 {% endblock %}

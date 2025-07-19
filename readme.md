@@ -2,6 +2,7 @@
 sudo systemctl daemon-reload
 sudo systemctl restart conveyor.service
 sudo systemctl stop conveyor.service
+sudo systemctl start conveyor.service
 
 source .venv/bin/activate
 

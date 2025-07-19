@@ -1,10 +1,10 @@
 """
-Definitive version of routes.py with all features. This version fixes the
-AttributeError by calling the correct, renamed network info function.
+Definitive version of routes.py with all features. This version is updated
+to handle JSON requests from the frontend API and includes new endpoints
+for printer configuration.
 """
 import subprocess
 from flask import Blueprint, render_template, jsonify, request
-# Renamed function is get_consolidated_network_info
 from . import hardware, wifi, ble, database, system 
 
 main_bp = Blueprint('main', __name__)
@@ -60,14 +60,10 @@ def api_pin_status():
 @main_bp.route('/api/system_health')
 def api_system_health(): return jsonify(system.get_system_health_info())
 
-# --- CORRECTED NETWORK STATUS API ---
 @main_bp.route('/api/network_status')
 def api_network_status():
     ble_address = database.get_setting('printer_address')
-    # FIX: Call the new, correct function name
     network_info = system.get_consolidated_network_info()
-
-    # Adapt the response to the format the network_status.html page expects
     response_data = {
         "ip_address": network_info["ip_address"],
         "ssid": network_info["wifi_ssid"],
@@ -81,7 +77,8 @@ def api_network_status():
 
 @main_bp.route('/api/manual_relay_control', methods=['POST'])
 def api_manual_relay_control():
-    device, action = request.form.get('device'), request.form.get('action')
+    data = request.get_json()
+    device, action = data.get('device'), data.get('action')
     relay_map = {'green_led': hardware.green_led, 'red_led': hardware.red_led}
 
     if device == 'gate':
@@ -100,12 +97,13 @@ def api_manual_relay_control():
 @main_bp.route('/api/set_config', methods=['POST'])
 def api_set_config():
     try:
+        data = request.get_json()
         with hardware.state['lock']:
-            hardware.state['batch_target'] = int(request.form.get('batch_target'))
-            hardware.state['gate_wait_time'] = int(request.form.get('gate_wait_time'))
+            hardware.state['batch_target'] = int(data.get('batch_target'))
+            hardware.state['gate_wait_time'] = int(data.get('gate_wait_time'))
         hardware.broadcast_status()
         return jsonify({"success": True, "message": "Configuration updated successfully!"})
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         return jsonify({"success": False, "message": f"Invalid input: {e}"})
 
 @main_bp.route('/api/reset_counter', methods=['POST'])
@@ -117,34 +115,72 @@ def api_reset_counter():
     hardware.broadcast_status()
     return jsonify({"success": True, "message": "Live count has been reset to 0."})
 
-# (The rest of the API endpoints are unchanged)
 @main_bp.route('/api/wifi/scan', methods=['POST'])
 def api_wifi_scan(): return jsonify(wifi.scan_wifi())
 
 @main_bp.route('/api/wifi/connect', methods=['POST'])
-def api_wifi_connect(): return jsonify(wifi.connect_to_wifi(request.form.get('ssid'), request.form.get('password')))
+def api_wifi_connect():
+    data = request.get_json()
+    return jsonify(wifi.connect_to_wifi(data.get('ssid'), data.get('password')))
 
 @main_bp.route('/api/ble/scan', methods=['POST'])
 def api_ble_scan(): return jsonify(ble.run_async(ble.scan_ble_devices()))
 
 @main_bp.route('/api/ble/get-characteristics', methods=['POST'])
-def api_ble_get_characteristics(): return jsonify(ble.run_async(ble.get_characteristics(request.form.get('address'))))
+def api_ble_get_characteristics():
+    data = request.get_json()
+    return jsonify(ble.run_async(ble.get_characteristics(data.get('address'))))
 
 @main_bp.route('/api/ble/save-device', methods=['POST'])
 def api_ble_save_device():
-    database.set_setting('printer_address', request.form.get('address'))
-    database.set_setting('write_characteristic_uuid', request.form.get('characteristic_uuid'))
+    data = request.get_json()
+    database.set_setting('printer_address', data.get('address'))
+    database.set_setting('write_characteristic_uuid', data.get('characteristic_uuid'))
     return jsonify({"success": True, "message": "Default printer saved successfully."})
 
-@main_bp.route('/api/ble/test-print', methods=['POST'])
-def api_ble_test_print():
-    # ... (functionality unchanged)
-    return jsonify({"success": False, "message": "Test print not implemented yet."})
+@main_bp.route('/api/ble/remove-device', methods=['POST'])
+def api_ble_remove_device():
+    try:
+        database.remove_setting('printer_address')
+        database.remove_setting('write_characteristic_uuid')
+        return jsonify({"success": True, "message": "Default printer has been removed."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An error occurred: {str(e)}"}), 500
 
+@main_bp.route('/api/get_printer_config', methods=['GET'])
+def get_printer_config():
+    config = {
+        'enabled': database.get_setting('printer_enabled', 'false') == 'true',
+        'delay_ms': database.get_setting('printer_delay_ms', '0'),
+        'var1': database.get_setting('printer_var1', ''),
+        'val1': database.get_setting('printer_var1_val', ''),
+        'var2': database.get_setting('printer_var2', ''),
+        'val2': database.get_setting('printer_var2_val', '')
+    }
+    return jsonify(config)
+
+@main_bp.route('/api/save_printer_config', methods=['POST'])
+def save_printer_config():
+    try:
+        config = request.get_json()
+        database.set_setting('printer_enabled', 'true' if config.get('enabled') else 'false')
+        database.set_setting('printer_delay_ms', str(config.get('delay_ms', '0')))
+        database.set_setting('printer_var1', config.get('var1', ''))
+        database.set_setting('printer_var1_val', config.get('val1', ''))
+        database.set_setting('printer_var2', config.get('var2', ''))
+        database.set_setting('printer_var2_val', config.get('val2', ''))
+        
+        with hardware.state['lock']:
+            hardware.state['printer_enabled'] = config.get('enabled', False)
+
+        return jsonify({"success": True, "message": "Printer configuration saved successfully."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"An error occurred: {str(e)}"}), 500
+        
 @main_bp.route('/api/unlock', methods=['POST'])
 def api_unlock():
-    # ... (functionality unchanged)
-    unlock_code = request.form.get('code')
+    data = request.get_json()
+    unlock_code = data.get('code')
     if unlock_code == "RPI_MASTER_8080":
         try:
             subprocess.run(['pkill', 'chromium-browser']); return jsonify({"success": True, "message": "Browser terminated."})
@@ -153,7 +189,6 @@ def api_unlock():
     
 @main_bp.route('/api/restart_application', methods=['POST'])
 def api_restart_application():
-    # ... (functionality unchanged)
     try:
         subprocess.run(['sudo', '/bin/systemctl', 'restart', 'conveyor.service'], check=True)
         return jsonify({"success": True, "message": "Application is restarting..."})
@@ -161,7 +196,6 @@ def api_restart_application():
 
 @main_bp.route('/api/reboot_system', methods=['POST'])
 def api_reboot_system():
-    # ... (functionality unchanged)
     try:
         subprocess.run(['sudo', '/bin/systemctl', 'reboot'], check=True)
         return jsonify({"success": True, "message": "System is rebooting..."})
@@ -169,7 +203,6 @@ def api_reboot_system():
 
 @main_bp.route('/api/shutdown_system', methods=['POST'])
 def api_shutdown_system():
-    # ... (functionality unchanged)
     try:
         subprocess.run(['sudo', '/bin/systemctl', 'poweroff'], check=True)
         return jsonify({"success": True, "message": "System is shutting down..."})
