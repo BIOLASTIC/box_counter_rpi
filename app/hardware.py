@@ -14,7 +14,7 @@ from .extensions import socketio
 # (PIN_CONFIG is unchanged)
 PIN_CONFIG = { 'IR_SENSOR': {'pin': 17, 'type': 'Input (NPN)'}, 'GATE_RELAY': {'pin': 22, 'type': 'Output (Relay)'}, 'GREEN_LED': {'pin': 27, 'type': 'Output (Relay)'}, 'RED_LED': {'pin': 23, 'type': 'Output (Relay)'}, 'BUZZER': {'pin': 24, 'type': 'Output (Relay)'} }
 
-# State dictionary - simplified by removing the 'sensor_primed_for_count' flag
+# State dictionary - Added last_debounce_timestamp to track rapid signals
 state = {
     "object_count": 0,
     "batch_target": 20,
@@ -33,6 +33,7 @@ state = {
     "beep_on_reset_ms": 100,
     "last_count_timestamp": 0,
     "debounce_time_ms": 500,
+    "last_debounce_timestamp": 0, # NEW: Tracks the timestamp of the last debounce event
 }
 
 # (Deferred Initialization logic is unchanged)
@@ -121,12 +122,15 @@ def handle_batch_completion():
         state['system_status'] = "Ready to Count"
     broadcast_status()
 
-# --- SIMPLIFIED AND MORE RELIABLE LOGIC ---
+def debounce_alert():
+    """Fires a quick series of beeps to indicate a debounce event."""
+    if not buzzer: return
+    print("DEBOUNCE ALERT: A rapid signal was ignored.")
+    buzzer.beep(on_time=0.1, off_time=0.1, n=5, background=True)
 
 def object_detected():
     """This function is called when the sensor is BLOCKED."""
     with state['lock']:
-        # Its only job is to reliably set the current state.
         state['ir_status'] = "Blocked"
     broadcast_status()
 
@@ -134,42 +138,48 @@ def object_passed():
     """This function is called when the sensor becomes CLEAR."""
     if not buzzer: return
     
-    with state['lock']:
-        # --- KEY CHANGE: RELIABLE STATE-TRANSITION CHECK ---
-        # 1. We only proceed if the state we were just in was "Blocked".
-        # This confirms a valid Blocked -> Clear transition.
-        if state['ir_status'] != "Blocked":
-            return # Ignore this signal, it was just noise or a stray event.
+    perform_debounce_alert = False
+    perform_count = False
+    count_beep_duration_s = 0
+    count = 0
+    target = 0
 
-        # 2. Check the software debounce timer to prevent multiple counts from signal flicker.
+    with state['lock']:
+        if state['ir_status'] != "Blocked":
+            return 
+
+        state['ir_status'] = "Clear"
         current_time_s = time.time()
         time_since_last_count_ms = (current_time_s - state['last_count_timestamp']) * 1000
+        
         if time_since_last_count_ms < state['debounce_time_ms']:
             print(f"Debounce ignored. Only {time_since_last_count_ms:.0f}ms since last valid count.")
-            state['ir_status'] = "Clear" # Still update status, but don't count.
-            broadcast_status()
-            return
+            state['last_debounce_timestamp'] = current_time_s # Update timestamp for the UI
+            perform_debounce_alert = True
+        
+        elif state['gate_status'] != "Open" or state['system_status'] not in ["Ready to Count", "Counting"]:
+            print("Count ignored: System not in a valid counting state.")
+        
+        else:
+            perform_count = True
+            state['last_count_timestamp'] = current_time_s
+            state['object_count'] += 1
+            state['system_status'] = "Counting"
+            
+            count = state['object_count']
+            target = state['batch_target']
+            count_beep_duration_s = state['beep_on_count_ms'] / 1000.0
 
-        # 3. Check if the system is in a valid state to be counting.
-        if state['gate_status'] != "Open" or state['system_status'] not in ["Ready to Count", "Counting"]:
-            state['ir_status'] = "Clear" # Update status, but don't count.
-            broadcast_status()
-            return
+    broadcast_status() 
 
-        # --- ALL CHECKS PASSED: THIS IS A VALID COUNT ---
-        state['last_count_timestamp'] = current_time_s # Update the timestamp
-        state['ir_status'] = "Clear"
-        state['object_count'] += 1
-        state['system_status'] = "Counting"
-        count, target = state['object_count'], state['batch_target']
-        count_beep_duration_s = state['beep_on_count_ms'] / 1000.0
+    if perform_debounce_alert:
+        debounce_alert()
     
-    print(f"VALID Count Registered. New Count: {count}")
-    buzzer.beep(on_time=count_beep_duration_s, n=1, background=True)
-    broadcast_status()
-    
-    if count >= target:
-        threading.Thread(target=handle_batch_completion, daemon=True).start()
+    if perform_count:
+        print(f"VALID Count Registered. New Count: {count}")
+        buzzer.beep(on_time=count_beep_duration_s, n=1, background=True)
+        if count >= target:
+            threading.Thread(target=handle_batch_completion, daemon=True).start()
 
 def system_startup():
     print("[Hardware] Starting system startup sequence...")

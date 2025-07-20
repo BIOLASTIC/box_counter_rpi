@@ -63,6 +63,16 @@
             </div>
         </div>
 
+        <!-- NEW: Debounce Alert Card (hidden by default) -->
+        <div id="debounce-alert-card" class="card mt-4 border-warning" style="display: none;">
+            <div class="card-body p-3 text-center bg-warning-subtle">
+                <h3 class="card-title text-warning-emphasis">
+                    <i class="bi bi-exclamation-triangle-fill"></i> DEBOUNCE DETECTED
+                </h3>
+                <p class="mb-0 text-warning-emphasis">A rapid signal was ignored to prevent a double-count.</p>
+            </div>
+        </div>
+
         <!-- Active Configuration Card -->
         <div class="card mt-4">
             <div class="card-body p-4">
@@ -120,22 +130,19 @@
 
 {% block extra_js %}
 <script>
-    // This entire script block is rewritten for WebSockets
     document.addEventListener('DOMContentLoaded', () => {
-        const socket = io(); // Connect to the WebSocket server
+        const socket = io();
+        let lastDebounceTimestamp = 0; // Tracks the last processed debounce event
 
-        // --- WebSocket Listener for Dashboard Updates ---
         socket.on('status_update', (data) => {
-            console.log('Received status_update:', data); // For debugging
+            console.log('Received status_update:', data);
             
-            // Update all display cards
             document.getElementById('live_count').textContent = `${data.object_count} / ${data.batch_target}`;
             document.getElementById('gate_status').textContent = data.gate_status.toUpperCase();
             document.getElementById('ir_status').textContent = data.ir_status.toUpperCase();
             document.getElementById('batches_completed').textContent = data.batches_completed;
             document.getElementById('last_printed_payload').textContent = data.last_printed_payload;
 
-            // Update colors and badges
             document.getElementById('gate_status').className = data.gate_status === 'Open' ? 'display-1 text-white' : 'display-1 text-warning';
             document.getElementById('ir_status').className = data.ir_status === 'Blocked' ? 'display-4 text-warning' : 'display-4 text-white';
 
@@ -146,11 +153,17 @@
             if (data.system_status.includes('Waiting') || data.system_status.includes('Closing')) badgeClass = 'bg-warning text-dark';
             systemStatusEl.innerHTML = `<span class="badge fs-4 ${badgeClass}">${data.system_status}</span>`;
 
-            // Update the read-only display card
+            // NEW: Debounce Alert Logic
+            const debounceCard = document.getElementById('debounce-alert-card');
+            if (data.last_debounce_timestamp && data.last_debounce_timestamp > lastDebounceTimestamp) {
+                lastDebounceTimestamp = data.last_debounce_timestamp;
+                debounceCard.style.display = 'block';
+                setTimeout(() => { debounceCard.style.display = 'none'; }, 4000);
+            }
+
             document.getElementById('display_batch_target').textContent = data.batch_target;
             document.getElementById('display_gate_wait_time').textContent = `${data.gate_wait_time} sec`;
 
-            // Update form inputs ONLY if they are not currently focused by the user
             if (document.activeElement !== document.getElementById('batch_target')) {
                  document.getElementById('batch_target').value = data.batch_target;
             }
@@ -158,8 +171,6 @@
                 document.getElementById('gate_wait_time').value = data.gate_wait_time;
             }
         });
-
-        // --- User-Initiated Actions (These remain mostly the same) ---
 
         document.getElementById('shortcut-container').addEventListener('click', (e) => {
             if (e.target.tagName === 'BUTTON') {
@@ -169,17 +180,23 @@
 
         document.getElementById('configForm').addEventListener('submit', function(e) {
             e.preventDefault();
-            const formData = new FormData(this);
+            const configData = {
+                batch_target: document.getElementById('batch_target').value,
+                gate_wait_time: document.getElementById('gate_wait_time').value
+            };
             const messageEl = document.getElementById('message');
 
-            fetch('/api/set_config', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    const alertClass = data.success ? 'alert-success' : 'alert-danger';
-                    messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
-                    // No need to manually update form, the next WebSocket broadcast will do it.
-                    setTimeout(() => { messageEl.innerHTML = ''; }, 3000);
-                });
+            fetch('/api/set_config', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(configData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                const alertClass = data.success ? 'alert-success' : 'alert-danger';
+                messageEl.innerHTML = `<div class="alert ${alertClass}">${data.message}</div>`;
+                setTimeout(() => { messageEl.innerHTML = ''; }, 3000);
+            });
         });
 
         document.getElementById('resetBtn').addEventListener('click', function() {
