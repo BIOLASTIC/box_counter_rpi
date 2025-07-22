@@ -67,10 +67,8 @@
         setTimeout(() => { area.innerHTML = ''; }, 4000);
     }
 
-    // This main handler ensures all JavaScript runs after the page is fully loaded.
     document.addEventListener('DOMContentLoaded', () => {
 
-        // Function to update the live connection status badge
         function updateConnectionStatus() {
             fetch('/api/status')
                 .then(res => res.json())
@@ -88,11 +86,9 @@
                 });
         }
         
-        // Start polling the connection status
         updateConnectionStatus();
         setInterval(updateConnectionStatus, 3000);
 
-        // Attach listener to the Scan button
         document.getElementById('scan-btn').addEventListener('click', e => {
             const btn = e.target;
             btn.disabled = true;
@@ -121,7 +117,6 @@
                 });
         });
 
-        // Attach listener to the list of scanned devices
         document.getElementById('devices-list').addEventListener('click', e => {
             e.preventDefault();
             const target = e.target.closest('.list-group-item-action');
@@ -135,33 +130,34 @@
             charSection.style.display = 'block';
             charList.innerHTML = '<li class="list-group-item"><span class="spinner-border spinner-border-sm"></span> Getting characteristics...</li>';
 
-            const formData = new FormData();
-            formData.append('address', selectedAddress);
-
-            fetch('/api/ble/get-characteristics', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    charList.innerHTML = '';
-                    if (data.error) {
-                        charList.innerHTML = `<li class="list-group-item list-group-item-danger">${data.error}</li>`;
-                        return;
-                    }
-                    const writableChars = data.filter(char => char.properties.toLowerCase().includes('write'));
-                    if (writableChars.length === 0) {
-                        charList.innerHTML = `<li class="list-group-item">No writable characteristics found on this device.</li>`;
-                    } else {
-                        writableChars.forEach(char => {
-                            charList.innerHTML += `<a href="#" class="list-group-item list-group-item-action" data-uuid="${char.uuid}">
-                                <b>UUID:</b> ${char.uuid}<br>
-                                <small class="text-muted">Properties: ${char.properties}</small>
-                                <button class="btn btn-success btn-sm float-end">Save as Default</button>
-                            </a>`;
-                        });
-                    }
-                });
+            // ## FIX: Send JSON data for get-characteristics
+            fetch('/api/ble/get-characteristics', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: selectedAddress })
+            })
+            .then(res => res.json())
+            .then(data => {
+                charList.innerHTML = '';
+                if (data.error) {
+                    charList.innerHTML = `<li class="list-group-item list-group-item-danger">${data.error}</li>`;
+                    return;
+                }
+                const writableChars = data.filter(char => char.properties.toLowerCase().includes('write'));
+                if (writableChars.length === 0) {
+                    charList.innerHTML = `<li class="list-group-item">No writable characteristics found.</li>`;
+                } else {
+                    writableChars.forEach(char => {
+                        charList.innerHTML += `<a href="#" class="list-group-item list-group-item-action" data-uuid="${char.uuid}">
+                            <b>UUID:</b> ${char.uuid}<br>
+                            <small class="text-muted">Properties: ${char.properties}</small>
+                            <button class="btn btn-success btn-sm float-end">Save as Default</button>
+                        </a>`;
+                    });
+                }
+            });
         });
 
-        // Attach listener to the characteristics list (for saving)
         document.getElementById('characteristics-list').addEventListener('click', e => {
             e.preventDefault();
             const target = e.target.closest('button');
@@ -170,21 +166,22 @@
             if (!parentLink) return;
 
             const charUuid = parentLink.dataset.uuid;
-            const formData = new FormData();
-            formData.append('address', selectedAddress);
-            formData.append('characteristic_uuid', charUuid);
-
-            fetch('/api/ble/save-device', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    showMessage(data.message, data.success);
-                    if (data.success) {
-                        setTimeout(() => window.location.reload(), 1500);
-                    }
-                });
+            
+            // ## FIX: Send JSON data for save-device
+            fetch('/api/ble/save-device', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address: selectedAddress, characteristic_uuid: charUuid })
+            })
+            .then(res => res.json())
+            .then(data => {
+                showMessage(data.message, data.success);
+                if (data.success) {
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            });
         });
 
-        // Attach listener to the Test Print form
         const testPrintForm = document.getElementById('test-print-form');
         if (testPrintForm) {
             testPrintForm.addEventListener('submit', e => {
@@ -194,17 +191,23 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-                const formData = new FormData();
-                formData.append('text', text);
+                // ## FIX: This is the critical change for the test print.
+                // We are now sending a JSON object instead of FormData.
+                const jsonData = { text: text };
 
-                fetch('/api/ble/test-print', { method: 'POST', body: formData })
-                    .then(res => res.json())
-                    .then(data => { showMessage(data.message, data.success); })
-                    .finally(() => { btn.disabled = false; btn.innerHTML = 'Send'; });
+                fetch('/api/ble/test-print', { 
+                    method: 'POST', 
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(jsonData)
+                })
+                .then(res => res.json())
+                .then(data => { showMessage(data.message, data.success); })
+                .finally(() => { btn.disabled = false; btn.innerHTML = 'Send'; });
             });
         }
 
-        // Attach listener to the Remove Device button
         const removeBtn = document.getElementById('remove-device-btn');
         if (removeBtn) {
             removeBtn.addEventListener('click', () => {

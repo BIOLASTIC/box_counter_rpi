@@ -45,4 +45,6 @@ nano ~/.config/lxsession/LXDE-pi/autostart
 
 @chromium-browser --kiosk --incognito --disable-pinch --noerrdialogs --disable-session-crashed-bubble http://localhost:5000
 
+nano ~/.config/autostart/kiosk.desktop
+
 

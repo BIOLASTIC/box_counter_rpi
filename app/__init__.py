@@ -1,10 +1,11 @@
 """
 Application Factory for the Conveyor Control System.
-This version uses standard threading for all background tasks.
+This version uses standard threading for all background tasks and enables CORS.
 """
 import time
 import atexit
 from flask import Flask
+from flask_cors import CORS  # Import CORS
 from .extensions import socketio
 from .database import init_db
 from .hardware import (system_startup, cleanup_gpio, get_live_pin_status,
@@ -20,12 +21,13 @@ def background_broadcaster_thread():
     loop_count = 0
     while True:
         try:
+            # Emitting to all clients
             socketio.emit('health_update', get_system_health_info())
             socketio.emit('pin_update', get_live_pin_status())
+            broadcast_status() # Broadcast main status frequently for real-time UI
             if loop_count % 5 == 0:
                 broadcast_top_bar_data()
             loop_count = (loop_count + 1) % 5
-            # Use the standard time.sleep, which is compatible with this threading model
             time.sleep(2)
         except Exception as e:
             print(f"[ERROR in background_broadcaster_thread]: {e}")
@@ -35,6 +37,8 @@ def broadcast_top_bar_data():
     """Gathers and broadcasts data for the top status bar."""
     network_info = get_consolidated_network_info()
     with hardware_state['lock']:
+        # Ensure database is imported for this function if it wasn't already
+        from . import database
         ble_saved = database.get_setting('printer_address') is not None
         ble_connected = hardware_state.get('ble_connection_status') == 'Connected'
     top_bar_data = {
@@ -52,8 +56,18 @@ def create_app():
     print("[App Factory] Creating Flask application instance...")
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'your-very-secret-key!'
-    socketio.init_app(app)
     
+    # Initialize Flask-CORS to allow API requests from any origin.
+    # This is crucial for your Vue app (or any other frontend) to be able to
+    # communicate with the backend API. It's configured to only apply to
+    # routes that start with /api/.
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    
+    # Initialize SocketIO with CORS allowed for all origins.
+    # This is necessary for the WebSocket connection to be established
+    # from your Vue application.
+    socketio.init_app(app, cors_allowed_origins="*")
+
     with app.app_context():
         init_db()
     print("[App Factory] Database initialization complete.")

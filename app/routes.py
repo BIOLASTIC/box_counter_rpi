@@ -1,7 +1,6 @@
 """
-Definitive version of routes.py with all features. This version is updated
-to handle JSON requests from the frontend API and includes new endpoints
-for printer configuration.
+Definitive version of routes.py with all features. This version uses the
+new thread-safe BLE loop runner for API calls.
 """
 import subprocess
 from flask import Blueprint, render_template, jsonify, request
@@ -9,7 +8,7 @@ from . import hardware, wifi, ble, database, system
 
 main_bp = Blueprint('main', __name__)
 
-# --- Page Rendering Routes (Unchanged) ---
+# --- Page Rendering Routes ---
 @main_bp.route('/')
 def index(): return render_template('index.html')
 
@@ -51,7 +50,8 @@ def support(): return render_template('main/support.html')
 @main_bp.route('/api/status')
 def api_status():
     with hardware.state['lock']:
-        return jsonify({k: v for k, v in hardware.state.items() if k not in ['lock', 'ble_printer_client']})
+        # Exclude non-JSON serializable objects
+        return jsonify({k: v for k, v in hardware.state.items() if k not in ['lock', 'ble_printer_client', 'ble_loop']})
 
 @main_bp.route('/api/pin_status')
 def api_pin_status():
@@ -77,8 +77,11 @@ def api_network_status():
 
 @main_bp.route('/api/manual_relay_control', methods=['POST'])
 def api_manual_relay_control():
-    data = request.get_json()
+    data = request.json
     device, action = data.get('device'), data.get('action')
+    if not hardware.green_led: 
+        return jsonify({"success": False, "message": "Hardware not initialized."}), 503
+
     relay_map = {'green_led': hardware.green_led, 'red_led': hardware.red_led}
 
     if device == 'gate':
@@ -97,7 +100,7 @@ def api_manual_relay_control():
 @main_bp.route('/api/set_config', methods=['POST'])
 def api_set_config():
     try:
-        data = request.get_json()
+        data = request.json
         with hardware.state['lock']:
             hardware.state['batch_target'] = int(data.get('batch_target'))
             hardware.state['gate_wait_time'] = int(data.get('gate_wait_time'))
@@ -120,20 +123,23 @@ def api_wifi_scan(): return jsonify(wifi.scan_wifi())
 
 @main_bp.route('/api/wifi/connect', methods=['POST'])
 def api_wifi_connect():
-    data = request.get_json()
-    return jsonify(wifi.connect_to_wifi(data.get('ssid'), data.get('password')))
+    data = request.json
+    ssid = data.get('ssid')
+    password = data.get('password')
+    return jsonify(wifi.connect_to_wifi(ssid, password))
 
 @main_bp.route('/api/ble/scan', methods=['POST'])
 def api_ble_scan(): return jsonify(ble.run_async(ble.scan_ble_devices()))
 
 @main_bp.route('/api/ble/get-characteristics', methods=['POST'])
 def api_ble_get_characteristics():
-    data = request.get_json()
-    return jsonify(ble.run_async(ble.get_characteristics(data.get('address'))))
+    data = request.json
+    address = data.get('address')
+    return jsonify(ble.run_async(ble.get_characteristics(address)))
 
 @main_bp.route('/api/ble/save-device', methods=['POST'])
 def api_ble_save_device():
-    data = request.get_json()
+    data = request.json
     database.set_setting('printer_address', data.get('address'))
     database.set_setting('write_characteristic_uuid', data.get('characteristic_uuid'))
     return jsonify({"success": True, "message": "Default printer saved successfully."})
@@ -143,43 +149,71 @@ def api_ble_remove_device():
     try:
         database.remove_setting('printer_address')
         database.remove_setting('write_characteristic_uuid')
-        return jsonify({"success": True, "message": "Default printer has been removed."})
+        return jsonify({"success": True, "message": "Default printer removed."})
     except Exception as e:
-        return jsonify({"success": False, "message": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
-@main_bp.route('/api/get_printer_config', methods=['GET'])
+@main_bp.route('/api/ble/test-print', methods=['POST'])
+def api_ble_test_print():
+    data = request.json
+    text_to_send = data.get('text')
+    if not text_to_send:
+        return jsonify({"success": False, "message": "No text provided."}), 400
+    try:
+        with hardware.state['lock']:
+            client = hardware.state.get('ble_printer_client')
+            is_connected = client and client.is_connected
+            char_uuid = database.get_setting('write_characteristic_uuid')
+
+        if not is_connected:
+            return jsonify({"success": False, "message": "Printer is not connected."})
+        if not char_uuid:
+            return jsonify({"success": False, "message": "No write characteristic is saved."})
+        
+        print(f"[API Test Print] Sending to UUID: {char_uuid}")
+        print(f"[API Test Print] Payload: '{text_to_send}'")
+        
+        # ## FIX: Use the new thread-safe runner
+        coro = client.write_gatt_char(char_uuid, text_to_send.encode('utf-8'))
+        ble.run_on_ble_loop(coro)
+        
+        return jsonify({"success": True, "message": f"Sent: '{text_to_send}'"})
+    except Exception as e:
+        print(f"[API Test Print] An error occurred: {e}")
+        return jsonify({"success": False, "message": f"An error occurred: {e}"}), 500
+
+@main_bp.route('/api/get_printer_config')
 def get_printer_config():
     config = {
-        'enabled': database.get_setting('printer_enabled', 'false') == 'true',
-        'delay_ms': database.get_setting('printer_delay_ms', '0'),
-        'var1': database.get_setting('printer_var1', ''),
-        'val1': database.get_setting('printer_var1_val', ''),
-        'var2': database.get_setting('printer_var2', ''),
-        'val2': database.get_setting('printer_var2_val', '')
+        "enabled": database.get_setting('printer_enabled', 'false') == 'true',
+        "delay_ms": database.get_setting('printer_delay_ms', '0'),
+        "var1": database.get_setting('printer_var1', 'PartNo:'),
+        "val1": database.get_setting('printer_var1_val', '12345'),
+        "var2": database.get_setting('printer_var2', 'QRCode:'),
+        "val2": database.get_setting('printer_var2_val', 'ABC-XYZ'),
     }
     return jsonify(config)
 
 @main_bp.route('/api/save_printer_config', methods=['POST'])
 def save_printer_config():
     try:
-        config = request.get_json()
-        database.set_setting('printer_enabled', 'true' if config.get('enabled') else 'false')
-        database.set_setting('printer_delay_ms', str(config.get('delay_ms', '0')))
-        database.set_setting('printer_var1', config.get('var1', ''))
-        database.set_setting('printer_var1_val', config.get('val1', ''))
-        database.set_setting('printer_var2', config.get('var2', ''))
-        database.set_setting('printer_var2_val', config.get('val2', ''))
-        
+        data = request.json
+        database.set_setting('printer_enabled', str(data.get('enabled', False)).lower())
+        database.set_setting('printer_delay_ms', str(data.get('delay_ms', 0)))
+        database.set_setting('printer_var1', data.get('var1', ''))
+        database.set_setting('printer_var1_val', data.get('val1', ''))
+        database.set_setting('printer_var2', data.get('var2', ''))
+        database.set_setting('printer_var2_val', data.get('val2', ''))
         with hardware.state['lock']:
-            hardware.state['printer_enabled'] = config.get('enabled', False)
-
-        return jsonify({"success": True, "message": "Printer configuration saved successfully."})
+            hardware.state['printer_enabled'] = data.get('enabled', False)
+        hardware.broadcast_status()
+        return jsonify({"success": True, "message": "Printer configuration saved successfully!"})
     except Exception as e:
-        return jsonify({"success": False, "message": f"An error occurred: {str(e)}"}), 500
-        
+        return jsonify({"success": False, "message": f"An error occurred: {e}"}), 500
+
 @main_bp.route('/api/unlock', methods=['POST'])
 def api_unlock():
-    data = request.get_json()
+    data = request.json
     unlock_code = data.get('code')
     if unlock_code == "RPI_MASTER_8080":
         try:
@@ -192,7 +226,8 @@ def api_restart_application():
     try:
         subprocess.run(['sudo', '/bin/systemctl', 'restart', 'conveyor.service'], check=True)
         return jsonify({"success": True, "message": "Application is restarting..."})
-    except Exception as e: return jsonify({"success": False, "message": str(e)}), 500
+    except Exception as e: 
+        return jsonify({"success": False, "message": f"Error: {e}. Ensure user has sudo rights."}), 500
 
 @main_bp.route('/api/reboot_system', methods=['POST'])
 def api_reboot_system():

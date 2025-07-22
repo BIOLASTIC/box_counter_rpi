@@ -30,26 +30,27 @@
         <div class="card mb-4">
             <div class="card-header fs-4">Data Payload</div>
             <div class="card-body">
+                <p class="text-muted">This data is sent with every print job. For example: `PartNo:12345`</p>
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <h5>Text Data</h5>
+                        <h5>Field 1</h5>
                         <div class="mb-2">
-                            <label for="var1" class="form-label">Variable 1 Name</label>
+                            <label for="var1" class="form-label">Field 1 Name (e.g., "PartNo:")</label>
                             <input type="text" id="var1" name="var1" class="form-control virtual-keyboard-input">
                         </div>
                         <div>
-                            <label for="val1" class="form-label">Variable 1 Value</label>
+                            <label for="val1" class="form-label">Field 1 Value (e.g., "12345")</label>
                             <input type="text" id="val1" name="val1" class="form-control virtual-keyboard-input">
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <h5>QR Data</h5>
+                        <h5>Field 2</h5>
                         <div class="mb-2">
-                            <label for="var2" class="form-label">Variable 2 Name</label>
+                            <label for="var2" class="form-label">Field 2 Name (e.g., "QRCode:")</label>
                             <input type="text" id="var2" name="var2" class="form-control virtual-keyboard-input">
                         </div>
                         <div>
-                            <label for="val2" class="form-label">Variable 2 Value</label>
+                            <label for="val2" class="form-label">Field 2 Value (e.g., "ABC-XYZ")</label>
                             <input type="text" id="val2" name="val2" class="form-control virtual-keyboard-input">
                         </div>
                     </div>
@@ -63,6 +64,7 @@
             <div class="card-body">
                 <label for="delay_ms" class="form-label">Print Delay (in milliseconds)</label>
                 <input type="number" id="delay_ms" name="delay_ms" class="form-control virtual-keyboard-input" placeholder="e.g., 500">
+                <small class="text-muted">Adds a delay after an object is detected before the print command is sent.</small>
             </div>
         </div>
 
@@ -86,10 +88,15 @@
 
     const form = document.getElementById('printer-config-form');
 
-    // Load existing settings when the page loads
+    // ## FIX: Load existing settings from the correct API endpoint when the page loads
     document.addEventListener('DOMContentLoaded', () => {
         fetch('/api/get_printer_config')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return res.json();
+            })
             .then(config => {
                 form.elements['enabled'].checked = config.enabled;
                 form.elements['delay_ms'].value = config.delay_ms;
@@ -97,10 +104,14 @@
                 form.elements['val1'].value = config.val1;
                 form.elements['var2'].value = config.var2;
                 form.elements['val2'].value = config.val2;
+            })
+            .catch(error => {
+                console.error('Error fetching printer config:', error);
+                showMessage('Could not load printer settings.', false);
             });
     });
 
-    // Handle form submission to save settings
+    // ## FIX: Handle form submission to save settings to the correct API endpoint
     form.addEventListener('submit', e => {
         e.preventDefault();
         
