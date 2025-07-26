@@ -1,50 +1,44 @@
 {% extends 'layout/base.html' %}
-{% block title %}Pin Diagnostics{% endblock %}
+{% block title %}Hardware Diagnostics{% endblock %}
 
 {% block content %}
 <div class="container">
     <h1 class="display-4 text-center mb-4">Hardware Diagnostics</h1>
-    <div class="row g-4">
-        <!-- ===== NEW: GPIO Diagram Column ===== -->
-        <div class="col-lg-6">
-            <div class="card">
-                <div class="card-header">
-                    <h4>GPIO Connection Diagram</h4>
-                </div>
-                <div class="card-body text-center">
-                    <p class="text-muted">This diagram shows how modules are connected to the Raspberry Pi.</p>
-                    <img src="{{ url_for('static', filename='images/gpio_diagram.png') }}" class="img-fluid rounded" alt="GPIO Connection Diagram">
-                </div>
-            </div>
-        </div>
+    <div class="row g-4 justify-content-center">
 
-        <!-- Live Pin Status Column -->
-        <div class="col-lg-6">
+        <!-- Live I/O Module Status Column -->
+        <div class="col-lg-8 col-md-10">
             <div class="card">
                 <div class="card-header">
-                    <h4>Live Pin Status</h4>
+                    <h4>Live I/O Module Status</h4>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-dark table-bordered align-middle text-center mb-0">
                         <thead>
                             <tr>
                                 <th>Component</th>
-                                <th>GPIO Pin</th>
+                                <th>Module Channel</th>
                                 <th>Live State</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for component, details in pin_config.items() %}
                             <tr>
-                                <td>{{ component.replace('_', ' ') }}</td>
-                                <td>{{ details.pin }}</td>
-                                <td id="{{ component }}_STATE" class="fs-5">--</td>
+                                <!-- Component Name (e.g., ENTRY SENSOR) -->
+                                <td>{{ component }}</td>
+                                <!-- Channel Number (e.g., 1) -->
+                                <td>{{ details.channel }}</td>
+                                <!-- Live state updated by JS. ID becomes e.g., ENTRY_SENSOR_STATE -->
+                                <td id="{{ component.replace(' ', '_') }}_STATE" class="fs-5">--</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
             </div>
+            <p class="text-center text-muted mt-3">
+                This table shows the live state of inputs and outputs on the USR-IO808 module.
+            </p>
         </div>
     </div>
 </div>
@@ -58,13 +52,20 @@
         // Listen for 'pin_update' events broadcasted from the server
         socket.on('pin_update', (data) => {
             console.log('Received pin_update:', data); // For debugging
+            
+            // Loop through each component in the received data object
             for (const component in data) {
-                const value = data[component];
+                // Find the corresponding table cell element by its ID
+                // e.g., component "ENTRY_SENSOR" will find element with id="ENTRY_SENSOR_STATE"
                 const stateEl = document.getElementById(component + '_STATE');
+                
                 if (stateEl) {
+                    const value = data[component];
                     const isHigh = (value === 1);
-                    const stateText = isHigh ? 'HIGH' : 'LOW';
+                    const stateText = isHigh ? 'ON / HIGH' : 'OFF / LOW';
                     const badgeClass = isHigh ? 'bg-success' : 'bg-danger';
+                    
+                    // Update the cell's content with a colored badge
                     stateEl.innerHTML = `<span class="badge ${badgeClass}">${stateText}</span>`;
                 }
             }

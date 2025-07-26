@@ -1,7 +1,10 @@
+"""
+This version adds a function to initialize the database with default
+settings if they do not already exist, ensuring a stable startup.
+"""
 import sqlite3
 import os
 
-# Build the absolute path to the database file in the project's root
 DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'app_instance.db')
 
 def get_db_connection():
@@ -23,6 +26,24 @@ def init_db():
     conn.close()
     print("[Database] Database initialized successfully.")
 
+def init_db_defaults():
+    """
+    NEW: Ensures default critical settings exist in the database.
+    This prevents the "Stuck on Initializing" bug.
+    """
+    print("[Database] Checking for default settings...")
+    defaults = {
+        'batch_target': '20',
+        'gate_wait_time': '10'
+    }
+    conn = get_db_connection()
+    for key, value in defaults.items():
+        # The 'OR IGNORE' is important: it will only insert if the key does not exist.
+        conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    conn.commit()
+    conn.close()
+    print("[Database] Default settings verified.")
+
 def get_setting(key, default=None):
     """Retrieves a setting value from the database."""
     conn = get_db_connection()
@@ -35,8 +56,7 @@ def get_setting(key, default=None):
 def set_setting(key, value):
     """Saves or updates a setting value in the database."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
     conn.commit()
     conn.close()
 
@@ -45,4 +65,4 @@ def remove_setting(key):
     conn = get_db_connection()
     conn.execute("DELETE FROM settings WHERE key = ?", (key,))
     conn.commit()
-    conn.close()    
+    conn.close()
